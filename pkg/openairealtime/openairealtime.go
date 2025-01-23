@@ -167,9 +167,7 @@ func (c *OpenAIRealtimeClient) listenForEvents() {
 			c.assistantIsTalking = true
 		case "response.audio.done":
 			c.assistantIsTalking = false
-			logger.Printf("ASSISTANT IS NOT TALKING ANYMORE!!!!!!!!!!!!!!!!!!!")
 		case "response.done":
-			logger.Printf("ASSISTANT IS NOT TALKING ANYMORE!!!!!!!!!!!!!!!!!!!")
 			c.assistantIsTalking = false
 		case "conversation.item.created":
 			c.assistantIsTalking = true
