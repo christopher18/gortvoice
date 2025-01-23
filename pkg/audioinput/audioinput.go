@@ -30,6 +30,19 @@ func Init(config Config) (*StreamHandler, error) {
 		return nil, err
 	}
 
+	// List available input devices
+	devices, err := portaudio.Devices()
+	if err != nil {
+		log.Warnf("Failed to list available input devices: %v", err)
+	} else {
+		log.Infof("Available Input Devices:")
+		for i, device := range devices {
+			if device.MaxInputChannels > 0 {
+				log.Infof("[%d] %s", i, device.Name)
+			}
+		}
+	}
+
 	sh := &StreamHandler{config: config}
 	return sh, nil
 }
