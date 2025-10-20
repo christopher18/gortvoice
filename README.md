@@ -77,10 +77,20 @@ The project is organized into several key packages:
 
 1. Build and run:
    ```bash
-   go run cmd/realtime/main.go
+   # Using the provided script (loads .env automatically)
+   ./run.sh
+   
+   # Or manually
+   export $(cat .env | xargs)
+   go run cmd/realtime/*.go
    ```
 
-2. Start speaking when the application indicates it's ready. The assistant will respond in real-time through your speakers.
+2. Controls:
+   - **Hold SPACEBAR** to unmute your microphone and speak
+   - **Release SPACEBAR** to stop (mic mutes after 500ms)
+   - **Press ESC** to exit
+
+3. The assistant will respond in real-time through your speakers.
 
 ### Troubleshooting
 

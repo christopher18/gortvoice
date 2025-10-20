@@ -72,8 +72,8 @@ func GetOpenAIRealtimeClient(config Config) (*OpenAIRealtimeClient, error) {
 
 	url := "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
 	dialer := websocket.Dialer{
-		HandshakeTimeout:  45 * time.Second,
-		EnableCompression: false, // Try disabling compression if you're having issues
+		// HandshakeTimeout:  45 * time.Second,
+		EnableCompression: true, // Try disabling compression if you're having issues
 		ReadBufferSize:    1024 * 1024,
 		WriteBufferSize:   1024 * 1024,
 		TLSClientConfig:   tlsConfig,
@@ -113,6 +113,8 @@ func (c *OpenAIRealtimeClient) Start() error {
 		return fmt.Errorf("failed to send initial session config: %w", err)
 	}
 
+	// Start pinger
+	// go c.startPinger()
 	// Start listening for events from assistant
 	go c.listenForEvents()
 	// Start listening for audio input from client
@@ -128,7 +130,18 @@ func (c *OpenAIRealtimeClient) listenForEvents() {
 	c.conn.SetReadDeadline(time.Now().Add(time.Second * 60))
 
 	// Set ping handler to keep connection alive
-	c.conn.SetPingHandler(func(string) error {
+	c.conn.SetPingHandler(func(appData string) error {
+		// Log bytes in hex format for better debugging
+		logger.Infof("Received ping bytes: %x", []byte(appData))
+		c.conn.SetReadDeadline(time.Now().Add(time.Second * 60))
+
+		// Send pong with the same data we received
+		return c.conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(25*time.Second))
+	})
+
+	// Set pong handler to log round-trip latency or extend the connection lifespan
+	c.conn.SetPongHandler(func(appData string) error {
+		logger.Printf("Received pong: %s", appData)
 		c.conn.SetReadDeadline(time.Now().Add(time.Second * 60))
 		return nil
 	})
@@ -157,12 +170,13 @@ func (c *OpenAIRealtimeClient) listenForEvents() {
 			continue
 		}
 
-		logger.Printf("Received event: %s", prettyPrint(data))
+		logger.Debugf("Received event: %s", prettyPrint(data))
+		logger.Infof("Received event type: %s", data["type"])
 
 		switch data["type"] {
 		case "response.audio.delta":
 			c.assistantIsTalking = true
-			handleResponseAudioDelta(c, message)
+			go handleResponseAudioDelta(c, message)
 		case "response.created":
 			c.assistantIsTalking = true
 		case "response.audio.done":
@@ -237,4 +251,16 @@ func sendInitialSessionConfig(conn *websocket.Conn) error {
 
 	logger.Printf("Connected to server. Sent initial session config.")
 	return nil
+}
+
+func (c *OpenAIRealtimeClient) startPinger() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := c.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second)); err != nil {
+			logger.Printf("Failed to send ping: %v", err)
+			return
+		}
+	}
 }

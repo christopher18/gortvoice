@@ -47,6 +47,33 @@ func Init(config Config) (*StreamHandler, error) {
 	return sh, nil
 }
 
+func monitorChannel(chunkChan <-chan []byte) {
+	log.Debug("Monitoring audio buffer usage")
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Infof("Monitoring audio buffer usage tick")
+		// Get current channel capacity usage
+		used := len(chunkChan)
+		capacity := cap(chunkChan)
+		usagePercent := float64(used) / float64(capacity) * 100
+
+		// Log based on severity
+		switch {
+		case usagePercent > 80:
+			log.Warnf("Audio buffer nearly full! Usage: %.1f%% (%d/%d)",
+				usagePercent, used, capacity)
+		case usagePercent > 50:
+			log.Infof("Audio buffer usage: %.1f%% (%d/%d)",
+				usagePercent, used, capacity)
+		default:
+			log.Infof("Audio buffer usage: %.1f%% (%d/%d)",
+				usagePercent, used, capacity)
+		}
+	}
+}
+
 // Listen starts capturing audio and returns a channel where PCM16 chunks are sent
 func (sh *StreamHandler) Listen() (<-chan []byte, error) {
 	if sh.config.Channels <= 0 {
@@ -58,30 +85,7 @@ func (sh *StreamHandler) Listen() (<-chan []byte, error) {
 	buffer := make([]int16, sh.config.FramesPerBuffer*sh.config.Channels)
 
 	// Add monitoring goroutine
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			// Get current channel capacity usage
-			used := len(chunkChan)
-			capacity := cap(chunkChan)
-			usagePercent := float64(used) / float64(capacity) * 100
-
-			// Log based on severity
-			switch {
-			case usagePercent > 80:
-				log.Warnf("Audio buffer nearly full! Usage: %.1f%% (%d/%d)",
-					usagePercent, used, capacity)
-			case usagePercent > 50:
-				log.Infof("Audio buffer usage: %.1f%% (%d/%d)",
-					usagePercent, used, capacity)
-			default:
-				log.Debugf("Audio buffer usage: %.1f%% (%d/%d)",
-					usagePercent, used, capacity)
-			}
-		}
-	}()
+	go monitorChannel(chunkChan)
 
 	stream, err := portaudio.OpenDefaultStream(
 		sh.config.Channels, 0, float64(sh.config.SampleRate), len(buffer), func(input []int16) {
@@ -91,6 +95,7 @@ func (sh *StreamHandler) Listen() (<-chan []byte, error) {
 		},
 	)
 	if err != nil {
+		log.Fatalf("Failed to open default stream: %v", err)
 		close(chunkChan)
 		return nil, err
 	}
